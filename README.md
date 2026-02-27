@@ -140,3 +140,34 @@ Claude Code 生成的类《羊了个羊》游戏实现
 - 游戏使用 Emoji 作为临时图标，可替换为自定义图标
 - 游戏逻辑完全使用原生 JavaScript 实现，无第三方游戏引擎依赖
 - 碰撞检测算法复杂度为 O(n²)，瓦片数量多时可能需要优化
+
+## 部署到生产环境
+
+游戏可以轻松部署到 Vercel（前端）并配置自定义域名。
+
+### 快速部署步骤
+1. **上传到 GitHub**
+   ```bash
+   # 配置git远程仓库
+   git remote add origin https://github.com/你的用户名/仓库名.git
+   git push -u origin master
+   ```
+
+2. **部署到 Vercel**
+   - 注册 [Vercel](https://vercel.com) 账号
+   - 导入GitHub仓库
+   - 自动部署，获得 `https://你的项目.vercel.app`
+
+3. **自定义域名（可选）**
+   - 在腾讯云等注册商购买域名
+   - 在Vercel项目设置中添加自定义域名
+   - 配置DNS解析
+
+详细部署指南请查看 [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)。
+
+## 后续优化建议
+1. 替换Emoji为自定义SVG图标
+2. 添加游戏音效
+3. 实现本地进度保存（localStorage）
+4. 添加游戏难度选择
+5. 集成简单的分数排行榜
