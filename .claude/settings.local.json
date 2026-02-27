@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tailwindcss init:*)",
+      "Bash(./node_modules/.bin/tailwindcss init:*)",
+      "Bash(curl:*)",
+      "Bash(pkill:*)",
+      "Bash(npx http-server:*)",
+      "Bash(timeout 3 python3:*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}
