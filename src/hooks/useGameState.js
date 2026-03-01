@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { generateTiles, initializeBlindBoxes } from '../utils/tileGenerator';
 import { calculateBlockedTiles } from '../utils/collisionDetection';
 import { checkElimination, removeTilesFromSlots, checkWinCondition, checkLoseCondition } from '../utils/eliminationLogic';
-import { MAX_SLOTS, TOTAL_TILES, BLIND_BOX_TILES_PER_SIDE } from '../utils/constants';
+import { MAX_SLOTS, TOTAL_TILES, BLIND_BOX_TILES_PER_SIDE, GAME_BOARD_WIDTH, GAME_BOARD_HEIGHT } from '../utils/constants';
 
 /**
  * 游戏状态管理Hook
@@ -28,7 +28,7 @@ export function useGameState() {
       initializeBlindBoxes(allTiles, 1, BLIND_BOX_TILES_PER_SIDE);
 
     // 计算遮挡状态
-    const tilesWithBlocked = calculateBlockedTiles(remainingTiles);
+    const tilesWithBlocked = calculateBlockedTiles(remainingTiles, GAME_BOARD_WIDTH, GAME_BOARD_HEIGHT);
 
     setTiles(tilesWithBlocked);
     setLeftBox(left);
@@ -57,7 +57,7 @@ export function useGameState() {
     const newSlots = [...slots, { ...tile, isSelected: false }];
 
     // 重新计算遮挡状态
-    const tilesWithBlocked = calculateBlockedTiles(newTiles);
+    const tilesWithBlocked = calculateBlockedTiles(newTiles, GAME_BOARD_WIDTH, GAME_BOARD_HEIGHT);
 
     setTiles(tilesWithBlocked);
     setSlots(newSlots);

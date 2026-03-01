@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { calculateBlockedTiles } from '../utils/collisionDetection';
+import { GAME_BOARD_WIDTH, GAME_BOARD_HEIGHT } from '../utils/constants';
 
 /**
  * 碰撞检测Hook
@@ -11,7 +12,7 @@ export function useCollisionDetection() {
    * @returns {Array} 更新后的瓦片数组
    */
   const updateBlockedTiles = useCallback((tiles) => {
-    return calculateBlockedTiles(tiles);
+    return calculateBlockedTiles(tiles, GAME_BOARD_WIDTH, GAME_BOARD_HEIGHT);
   }, []);
 
   /**
@@ -26,12 +27,23 @@ export function useCollisionDetection() {
 
     // 检查是否有上层瓦片重叠
     for (const higherTile of higherTiles) {
-      // 简单矩形碰撞检测
+      // 将百分比坐标转换为像素坐标
+      const tx = (tile.x / 100) * GAME_BOARD_WIDTH;
+      const ty = (tile.y / 100) * GAME_BOARD_HEIGHT;
+      const tw = tile.width;
+      const th = tile.height;
+      
+      const hx = (higherTile.x / 100) * GAME_BOARD_WIDTH;
+      const hy = (higherTile.y / 100) * GAME_BOARD_HEIGHT;
+      const hw = higherTile.width;
+      const hh = higherTile.height;
+      
+      // 矩形碰撞检测
       const overlap = !(
-        tile.x + tile.width < higherTile.x ||
-        tile.x > higherTile.x + higherTile.width ||
-        tile.y + tile.height < higherTile.y ||
-        tile.y > higherTile.y + higherTile.height
+        tx + tw < hx ||
+        tx > hx + hw ||
+        ty + th < hy ||
+        ty > hy + hh
       );
 
       if (overlap) {

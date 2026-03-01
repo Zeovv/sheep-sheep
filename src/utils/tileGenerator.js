@@ -17,10 +17,15 @@ export function generateTiles(totalTiles = TOTAL_TILES) {
   TILE_TYPES.forEach(type => {
     for (let i = 0; i < tilesPerType; i++) {
       if (tiles.length < count) {
+        // 更合理的层级分布：大部分在0-3层，少量在4-5层
+        const layer = Math.random() < 0.7 
+          ? Math.floor(Math.random() * 4) // 0-3层（70%概率）
+          : Math.floor(Math.random() * 2) + 4; // 4-5层（30%概率）
+        
         tiles.push({
           id: `tile_${idCounter++}`,
           type,
-          layer: Math.floor(Math.random() * 5), // 0-4层
+          layer,
           x: Math.random() * 80 + 10, // 10-90%位置
           y: Math.random() * 60 + 10, // 10-70%位置
           width: TILE_WIDTH,
