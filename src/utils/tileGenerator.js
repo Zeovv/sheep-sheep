@@ -1,117 +1,294 @@
-import { TILE_TYPES, TOTAL_TILES, TILE_WIDTH, TILE_HEIGHT } from './constants';
+import { 
+  TILE_TYPES, 
+  GRID_SIZE, 
+  GAME_BOARD_WIDTH, 
+  GAME_BOARD_HEIGHT,
+  TILE_WIDTH,
+  TILE_HEIGHT,
+  BOARD_PADDING,
+  TOTAL_TILES,
+  MIN_LAYERS,
+  MAX_LAYERS
+} from './constants';
 
 /**
- * 生成瓦片数组
- * @param {number} totalTiles - 瓦片总数（必须是3的倍数）
- * @returns {Array} 瓦片数组
+ * 将网格坐标转换为像素坐标
+ * @param {number} gridX - 网格X坐标 (0-6)
+ * @param {number} gridY - 网格Y坐标 (0-6)
+ * @returns {Object} {x, y} 像素坐标
  */
-export function generateTiles(totalTiles = TOTAL_TILES) {
-  // 确保总数是3的倍数
-  const count = Math.ceil(totalTiles / 3) * 3;
-  const tiles = [];
-
-  // 每种类型至少生成3个，确保可消除
-  const tilesPerType = Math.ceil(count / TILE_TYPES.length);
-
-  let idCounter = 0;
-  TILE_TYPES.forEach(type => {
-    for (let i = 0; i < tilesPerType; i++) {
-      if (tiles.length < count) {
-        // 更合理的层级分布：大部分在0-3层，少量在4-5层
-        const layer = Math.random() < 0.7 
-          ? Math.floor(Math.random() * 4) // 0-3层（70%概率）
-          : Math.floor(Math.random() * 2) + 4; // 4-5层（30%概率）
-        
-        tiles.push({
-          id: `tile_${idCounter++}`,
-          type,
-          layer,
-          x: Math.random() * 80 + 10, // 10-90%位置
-          y: Math.random() * 60 + 10, // 10-70%位置
-          width: TILE_WIDTH,
-          height: TILE_HEIGHT,
-          isBlocked: false,
-          isSelected: false,
-          isVisible: true // 用于盲盒
-        });
-      }
-    }
-  });
-
-  // Fisher-Yates洗牌算法
-  for (let i = tiles.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [tiles[i], tiles[j]] = [tiles[j], tiles[i]];
-  }
-
-  return tiles;
-}
-
-/**
- * 初始化盲盒
- * @param {Array} tiles - 所有瓦片
- * @param {number} boxesPerSide - 每侧盲盒数量
- * @param {number} tilesPerBox - 每个盲盒瓦片数
- * @returns {Object} 包含左右盲盒和剩余瓦片的对象
- */
-export function initializeBlindBoxes(tiles, boxesPerSide = 1, tilesPerBox = 8) {
-  // 创建左右盲盒
-  let leftBox = [];
-  let rightBox = [];
-
-  // 从总瓦片中分配一部分到盲盒
-  const shuffledTiles = [...tiles];
-
-  // Fisher-Yates洗牌
-  for (let i = shuffledTiles.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [shuffledTiles[i], shuffledTiles[j]] = [shuffledTiles[j], shuffledTiles[i]];
-  }
-
-  // 分配瓦片到盲盒
-  for (let i = 0; i < tilesPerBox; i++) {
-    if (i < shuffledTiles.length) {
-      leftBox.push({ ...shuffledTiles[i], isVisible: false });
-    }
-    if (i + tilesPerBox < shuffledTiles.length) {
-      rightBox.push({ ...shuffledTiles[i + tilesPerBox], isVisible: false });
-    }
-  }
-
-  // 设置最前面的瓦片为可见
-  if (leftBox.length > 0) {
-    leftBox = [{ ...leftBox[0], isVisible: true }, ...leftBox.slice(1)];
-  }
-  if (rightBox.length > 0) {
-    rightBox = [{ ...rightBox[0], isVisible: true }, ...rightBox.slice(1)];
-  }
-
-  // 剩余的瓦片放在主绘图区
-  const remainingTiles = shuffledTiles.slice(tilesPerBox * 2);
-
+function gridToPixel(gridX, gridY) {
+  const cellWidth = (GAME_BOARD_WIDTH - BOARD_PADDING * 2) / GRID_SIZE;
+  const cellHeight = (GAME_BOARD_HEIGHT - BOARD_PADDING * 2) / GRID_SIZE;
+  
+  const x = BOARD_PADDING + gridX * cellWidth;
+  const y = BOARD_PADDING + gridY * cellHeight;
+  
+  // 确保坐标不会让瓦片出界
+  const maxX = GAME_BOARD_WIDTH - BOARD_PADDING - TILE_WIDTH;
+  const maxY = GAME_BOARD_HEIGHT - BOARD_PADDING - TILE_HEIGHT;
+  
   return {
-    leftBox,
-    rightBox,
-    remainingTiles
+    x: Math.max(BOARD_PADDING, Math.min(x, maxX)),
+    y: Math.max(BOARD_PADDING, Math.min(y, maxY))
   };
 }
 
 /**
- * 从盲盒中取出瓦片
- * @param {Array} box - 盲盒数组
- * @param {string} boxSide - 盲盒侧边（'left' 或 'right'）
- * @returns {Object|null} 取出的瓦片或null
+ * 生成对称的网格位置
+ * 确保左右对称分布，并且均匀分布在整个游戏板上
+ * @param {number} totalPositions - 总位置数
+ * @param {number} layers - 层数
+ * @returns {Array} 每层的位置数组
  */
-export function takeFromBlindBox(box, boxSide) {
-  if (box.length === 0) return null;
+function generateSymmetricPositions(totalPositions, layers) {
+  const basePositions = [];
+  const positionsPerLayer = Math.ceil(totalPositions / layers);
+  
+  // 计算中心线（用于对称）
+  const centerX = GRID_SIZE / 2;
+  
+  for (let layer = 0; layer < layers; layer++) {
+    const positions = [];
+    
+    // 改进：让每层均匀分布在整个游戏板的垂直方向上
+    // 将游戏板分成 layers 个垂直区域，每层占据一个区域
+    const verticalStart = (layer / layers) * GRID_SIZE;
+    const verticalEnd = ((layer + 1) / layers) * GRID_SIZE;
+    
+    // 计算需要的行数和列数
+    const cols = Math.ceil(Math.sqrt(positionsPerLayer));
+    const rows = Math.ceil(positionsPerLayer / cols);
+    
+    // 在左半部分生成位置
+    const leftPositions = [];
+    const leftCount = Math.ceil(positionsPerLayer / 2);
+    
+    for (let i = 0; i < leftCount; i++) {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      
+      // 在左半部分均匀分布
+      const gridX = (col / cols) * centerX * 0.9;
+      const gridY = verticalStart + (row / rows) * (verticalEnd - verticalStart) * 0.9;
+      
+      if (gridX < centerX && gridY < GRID_SIZE - 0.5) {
+        leftPositions.push({ gridX, gridY });
+      }
+    }
+    
+    // 为左半部分的位置生成对称的右半部分位置
+    leftPositions.forEach(pos => {
+      positions.push(pos);
+      
+      // 添加对称位置（右半部分）
+      if (positions.length < positionsPerLayer) {
+        const symmetricX = centerX * 2 - pos.gridX;
+        if (symmetricX >= centerX && symmetricX < GRID_SIZE) {
+          positions.push({ gridX: symmetricX, gridY: pos.gridY });
+        }
+      }
+    });
+    
+    // 如果位置不够，在中心线附近添加一些
+    while (positions.length < positionsPerLayer) {
+      const gridX = centerX + (Math.random() - 0.5) * 0.3;
+      const gridY = verticalStart + Math.random() * (verticalEnd - verticalStart) * 0.9;
+      
+      if (gridX >= 0 && gridX < GRID_SIZE && gridY >= 0 && gridY < GRID_SIZE - 0.5) {
+        const key = `${gridX.toFixed(2)}_${gridY.toFixed(2)}`;
+        const exists = positions.some(p => 
+          Math.abs(p.gridX - gridX) < 0.1 && Math.abs(p.gridY - gridY) < 0.1
+        );
+        if (!exists) {
+          positions.push({ gridX, gridY });
+        }
+      }
+      
+      // 防止无限循环
+      if (positions.length >= positionsPerLayer * 2) break;
+    }
+    
+    // 限制数量并去重
+    const uniquePositions = [];
+    const seen = new Set();
+    for (const pos of positions) {
+      const key = `${pos.gridX.toFixed(2)}_${pos.gridY.toFixed(2)}`;
+      if (!seen.has(key) && uniquePositions.length < positionsPerLayer) {
+        seen.add(key);
+        uniquePositions.push(pos);
+      }
+    }
+    
+    basePositions.push(uniquePositions);
+  }
+  
+  return basePositions;
+}
 
-  // 取出最前面的瓦片（不可变版本）
-  const takenTile = box[0];
-  const newBox = box.slice(1).map((tile, index) =>
-    index === 0 ? { ...tile, isVisible: true } : tile
-  );
+/**
+ * 生成随机分配但保证每种牌都是3的倍数的数量
+ * @param {number} totalTiles - 总瓦片数
+ * @param {number} typeCount - 牌种类数
+ * @returns {Array} 每种牌的数量数组
+ */
+function generateTileCounts(totalTiles, typeCount) {
+  const counts = new Array(typeCount).fill(0);
+  const minPerType = 3; // 每种至少3个
+  const baseTotal = minPerType * typeCount; // 基础总数
+  
+  // 先给每种牌分配最少3个
+  for (let i = 0; i < typeCount; i++) {
+    counts[i] = minPerType;
+  }
+  
+  // 剩余的数量随机分配，但每次分配必须是3的倍数
+  let remaining = totalTiles - baseTotal;
+  
+  while (remaining > 0) {
+    const randomIndex = Math.floor(Math.random() * typeCount);
+    const addAmount = Math.min(3, Math.floor(remaining / 3) * 3); // 每次至少加3个
+    
+    if (addAmount >= 3) {
+      counts[randomIndex] += addAmount;
+      remaining -= addAmount;
+    } else {
+      break;
+    }
+  }
+  
+  // 确保总和正确，调整最后一个
+  const currentTotal = counts.reduce((sum, count) => sum + count, 0);
+  const diff = totalTiles - currentTotal;
+  if (diff !== 0 && diff % 3 === 0) {
+    counts[counts.length - 1] += diff;
+  }
+  
+  // 验证每种牌都是3的倍数
+  return counts.map(count => {
+    const remainder = count % 3;
+    if (remainder !== 0) {
+      return count - remainder; // 向下取整到3的倍数
+    }
+    return count;
+  });
+}
 
-  // 返回取出的瓦片和新盲盒数组
-  // 注意：调用者需要更新状态
-  return { takenTile, newBox };
+/**
+ * 生成整齐堆叠的瓦片
+ * 上层瓦片可以部分或全部遮挡下层瓦片
+ * @param {number} totalTiles - 总瓦片数（必须是3的倍数）
+ * @param {number} layers - 层数
+ * @returns {Array} 瓦片数组
+ */
+export function generateTiles(totalTiles = TOTAL_TILES, layers = null) {
+  // 如果没有指定层数，使用更多层数增加难度
+  if (!layers) {
+    layers = Math.floor(Math.random() * (MAX_LAYERS - MIN_LAYERS + 1)) + MIN_LAYERS;
+  }
+  
+  // 确保总数是3的倍数
+  totalTiles = Math.ceil(totalTiles / 3) * 3;
+  
+  // 生成每种牌的数量（保证每种都是3的倍数）
+  const tileCounts = generateTileCounts(totalTiles, TILE_TYPES.length);
+  
+  // 定义堆叠模式：上层瓦片相对于下层瓦片的偏移
+  // 支持：上/下/左/右半部分/全部遮挡/左上/右上/左下/右下四分之一
+  const stackPatterns = [
+    { offsetX: 0, offsetY: 0 },           // 全部遮挡（完全重叠）
+    { offsetX: 0.5, offsetY: 0 },        // 右移50%（遮挡左半部分）
+    { offsetX: -0.5, offsetY: 0 },        // 左移50%（遮挡右半部分）
+    { offsetX: 0, offsetY: 0.5 },         // 下移50%（遮挡上半部分）
+    { offsetX: 0, offsetY: -0.5 },        // 上移50%（遮挡下半部分）
+    { offsetX: 0.5, offsetY: 0.5 },       // 右下移（遮挡左上四分之一）
+    { offsetX: -0.5, offsetY: 0.5 },      // 左下移（遮挡右上四分之一）
+    { offsetX: 0.5, offsetY: -0.5 },      // 右上移（遮挡左下四分之一）
+    { offsetX: -0.5, offsetY: -0.5 },     // 左上移（遮挡右下四分之一）
+  ];
+  
+  // 生成对称的基础位置
+  const basePositions = generateSymmetricPositions(totalTiles, layers);
+  
+  const tiles = [];
+  let idCounter = 0;
+  
+  // 为每种类型生成瓦片
+  TILE_TYPES.forEach((type, typeIndex) => {
+    const countForType = tileCounts[typeIndex];
+    
+    for (let i = 0; i < countForType; i++) {
+      // 随机选择层数
+      const layer = Math.floor(Math.random() * layers);
+      
+      // 从该层的基础位置中选择
+      const layerPos = basePositions[layer];
+      if (!layerPos || layerPos.length === 0) continue;
+      
+      // 均匀分布：使用循环索引确保均匀分布
+      const posIndex = (i * TILE_TYPES.length + typeIndex + idCounter) % layerPos.length;
+      let basePos = layerPos[posIndex];
+      
+      // 如果是上层（layer > 0），应用堆叠偏移，让上层部分遮挡下层
+      if (layer > 0) {
+        // 找到下层对应的位置（如果有的话）
+        const lowerLayer = layer - 1;
+        const lowerPositions = basePositions[lowerLayer];
+        
+        if (lowerPositions && lowerPositions.length > 0) {
+          // 尝试与下层位置对齐，形成堆叠效果
+          const lowerIndex = Math.min(posIndex, lowerPositions.length - 1);
+          const lowerPos = lowerPositions[lowerIndex];
+          
+          // 选择一个堆叠模式，让上层部分遮挡下层
+          const pattern = stackPatterns[Math.floor(Math.random() * stackPatterns.length)];
+          
+          // 计算偏移量（基于瓦片尺寸）
+          const cellWidth = (GAME_BOARD_WIDTH - BOARD_PADDING * 2) / GRID_SIZE;
+          const cellHeight = (GAME_BOARD_HEIGHT - BOARD_PADDING * 2) / GRID_SIZE;
+          
+          basePos = {
+            gridX: Math.max(0, Math.min(GRID_SIZE - 1.5, lowerPos.gridX + pattern.offsetX * (TILE_WIDTH / cellWidth))),
+            gridY: Math.max(0, Math.min(GRID_SIZE - 1.5, lowerPos.gridY + pattern.offsetY * (TILE_HEIGHT / cellHeight)))
+          };
+        } else {
+          // 如果没有下层，使用随机偏移
+          const pattern = stackPatterns[Math.floor(Math.random() * stackPatterns.length)];
+          const cellWidth = (GAME_BOARD_WIDTH - BOARD_PADDING * 2) / GRID_SIZE;
+          const cellHeight = (GAME_BOARD_HEIGHT - BOARD_PADDING * 2) / GRID_SIZE;
+          
+          basePos = {
+            gridX: Math.max(0, Math.min(GRID_SIZE - 1.5, basePos.gridX + pattern.offsetX * (TILE_WIDTH / cellWidth))),
+            gridY: Math.max(0, Math.min(GRID_SIZE - 1.5, basePos.gridY + pattern.offsetY * (TILE_HEIGHT / cellHeight)))
+          };
+        }
+      }
+      
+      // 转换为像素坐标
+      const pixelPos = gridToPixel(basePos.gridX, basePos.gridY);
+      
+      tiles.push({
+        id: `tile_${idCounter++}`,
+        type,
+        layer,
+        gridX: basePos.gridX,
+        gridY: basePos.gridY,
+        x: pixelPos.x,
+        y: pixelPos.y,
+        width: TILE_WIDTH,
+        height: TILE_HEIGHT,
+        isBlocked: false,
+        isSelected: false,
+        isVisible: true
+      });
+    }
+  });
+  
+  // Fisher-Yates洗牌算法，确保随机分布
+  for (let i = tiles.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [tiles[i], tiles[j]] = [tiles[j], tiles[i]];
+  }
+  
+  return tiles;
 }
