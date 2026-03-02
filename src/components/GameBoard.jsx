@@ -6,8 +6,6 @@ import { GAME_BOARD_WIDTH, GAME_BOARD_HEIGHT } from '../utils/constants';
  * 游戏板组件 - 简洁设计
  */
 function GameBoard({ tiles = [], onTileClick, className = '' }) {
-  const activeTiles = tiles.filter(tile => !tile.isBlocked);
-
   const boardStyle = {
     width: `${GAME_BOARD_WIDTH}px`,
     height: `${GAME_BOARD_HEIGHT}px`,

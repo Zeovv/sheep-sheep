@@ -6,6 +6,7 @@ import {
   TILE_WIDTH,
   TILE_HEIGHT,
   BOARD_PADDING,
+  GRID_UNIT,
   TOTAL_TILES,
   MIN_LAYERS,
   MAX_LAYERS
@@ -41,88 +42,55 @@ function gridToPixel(gridX, gridY) {
  * @param {number} layers - 层数
  * @returns {Array} 每层的位置数组
  */
+function shuffleArray(array) {
+  const result = [...array];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
+
 function generateSymmetricPositions(totalPositions, layers) {
   const basePositions = [];
   const positionsPerLayer = Math.ceil(totalPositions / layers);
-  
-  // 计算中心线（用于对称）
-  const centerX = GRID_SIZE / 2;
-  
+  const centerX = (GRID_SIZE - 1) / 2;
+
+  const leftCandidates = [];
+  const centerCandidates = [];
+
+  for (let x = 0; x < centerX; x += 1) {
+    for (let y = 0; y <= GRID_SIZE - 1; y += GRID_UNIT) {
+      leftCandidates.push({ gridX: x, gridY: y });
+    }
+  }
+
+  for (let y = 0; y <= GRID_SIZE - 1; y += GRID_UNIT) {
+    centerCandidates.push({ gridX: centerX, gridY: y });
+  }
+
   for (let layer = 0; layer < layers; layer++) {
     const positions = [];
-    
-    // 改进：让每层均匀分布在整个游戏板的垂直方向上
-    // 将游戏板分成 layers 个垂直区域，每层占据一个区域
-    const verticalStart = (layer / layers) * GRID_SIZE;
-    const verticalEnd = ((layer + 1) / layers) * GRID_SIZE;
-    
-    // 计算需要的行数和列数
-    const cols = Math.ceil(Math.sqrt(positionsPerLayer));
-    const rows = Math.ceil(positionsPerLayer / cols);
-    
-    // 在左半部分生成位置
-    const leftPositions = [];
-    const leftCount = Math.ceil(positionsPerLayer / 2);
-    
-    for (let i = 0; i < leftCount; i++) {
-      const col = i % cols;
-      const row = Math.floor(i / cols);
-      
-      // 在左半部分均匀分布
-      const gridX = (col / cols) * centerX * 0.9;
-      const gridY = verticalStart + (row / rows) * (verticalEnd - verticalStart) * 0.9;
-      
-      if (gridX < centerX && gridY < GRID_SIZE - 0.5) {
-        leftPositions.push({ gridX, gridY });
-      }
-    }
-    
-    // 为左半部分的位置生成对称的右半部分位置
-    leftPositions.forEach(pos => {
+    const shuffledLeft = shuffleArray(leftCandidates);
+    const shuffledCenter = shuffleArray(centerCandidates);
+    const pairCount = Math.min(Math.floor(positionsPerLayer / 2), shuffledLeft.length);
+
+    for (let i = 0; i < pairCount; i++) {
+      const pos = shuffledLeft[i];
       positions.push(pos);
-      
-      // 添加对称位置（右半部分）
-      if (positions.length < positionsPerLayer) {
-        const symmetricX = centerX * 2 - pos.gridX;
-        if (symmetricX >= centerX && symmetricX < GRID_SIZE) {
-          positions.push({ gridX: symmetricX, gridY: pos.gridY });
-        }
-      }
-    });
-    
-    // 如果位置不够，在中心线附近添加一些
-    while (positions.length < positionsPerLayer) {
-      const gridX = centerX + (Math.random() - 0.5) * 0.3;
-      const gridY = verticalStart + Math.random() * (verticalEnd - verticalStart) * 0.9;
-      
-      if (gridX >= 0 && gridX < GRID_SIZE && gridY >= 0 && gridY < GRID_SIZE - 0.5) {
-        const key = `${gridX.toFixed(2)}_${gridY.toFixed(2)}`;
-        const exists = positions.some(p => 
-          Math.abs(p.gridX - gridX) < 0.1 && Math.abs(p.gridY - gridY) < 0.1
-        );
-        if (!exists) {
-          positions.push({ gridX, gridY });
-        }
-      }
-      
-      // 防止无限循环
-      if (positions.length >= positionsPerLayer * 2) break;
+      positions.push({ gridX: centerX * 2 - pos.gridX, gridY: pos.gridY });
     }
-    
-    // 限制数量并去重
-    const uniquePositions = [];
-    const seen = new Set();
-    for (const pos of positions) {
-      const key = `${pos.gridX.toFixed(2)}_${pos.gridY.toFixed(2)}`;
-      if (!seen.has(key) && uniquePositions.length < positionsPerLayer) {
-        seen.add(key);
-        uniquePositions.push(pos);
+
+    if (positions.length < positionsPerLayer) {
+      const remaining = positionsPerLayer - positions.length;
+      for (let i = 0; i < remaining && i < shuffledCenter.length; i++) {
+        positions.push(shuffledCenter[i]);
       }
     }
-    
-    basePositions.push(uniquePositions);
+
+    basePositions.push(positions.slice(0, positionsPerLayer));
   }
-  
+
   return basePositions;
 }
 
@@ -229,37 +197,22 @@ export function generateTiles(totalTiles = TOTAL_TILES, layers = null) {
       const posIndex = (i * TILE_TYPES.length + typeIndex + idCounter) % layerPos.length;
       let basePos = layerPos[posIndex];
       
-      // 如果是上层（layer > 0），应用堆叠偏移，让上层部分遮挡下层
       if (layer > 0) {
-        // 找到下层对应的位置（如果有的话）
         const lowerLayer = layer - 1;
         const lowerPositions = basePositions[lowerLayer];
         
         if (lowerPositions && lowerPositions.length > 0) {
-          // 尝试与下层位置对齐，形成堆叠效果
           const lowerIndex = Math.min(posIndex, lowerPositions.length - 1);
           const lowerPos = lowerPositions[lowerIndex];
           
-          // 选择一个堆叠模式，让上层部分遮挡下层
           const pattern = stackPatterns[Math.floor(Math.random() * stackPatterns.length)];
           
-          // 计算偏移量（基于瓦片尺寸）
           const cellWidth = (GAME_BOARD_WIDTH - BOARD_PADDING * 2) / GRID_SIZE;
           const cellHeight = (GAME_BOARD_HEIGHT - BOARD_PADDING * 2) / GRID_SIZE;
           
           basePos = {
-            gridX: Math.max(0, Math.min(GRID_SIZE - 1.5, lowerPos.gridX + pattern.offsetX * (TILE_WIDTH / cellWidth))),
-            gridY: Math.max(0, Math.min(GRID_SIZE - 1.5, lowerPos.gridY + pattern.offsetY * (TILE_HEIGHT / cellHeight)))
-          };
-        } else {
-          // 如果没有下层，使用随机偏移
-          const pattern = stackPatterns[Math.floor(Math.random() * stackPatterns.length)];
-          const cellWidth = (GAME_BOARD_WIDTH - BOARD_PADDING * 2) / GRID_SIZE;
-          const cellHeight = (GAME_BOARD_HEIGHT - BOARD_PADDING * 2) / GRID_SIZE;
-          
-          basePos = {
-            gridX: Math.max(0, Math.min(GRID_SIZE - 1.5, basePos.gridX + pattern.offsetX * (TILE_WIDTH / cellWidth))),
-            gridY: Math.max(0, Math.min(GRID_SIZE - 1.5, basePos.gridY + pattern.offsetY * (TILE_HEIGHT / cellHeight)))
+            gridX: Math.max(0, Math.min(GRID_SIZE - 1, lowerPos.gridX + pattern.offsetX * (TILE_WIDTH / cellWidth))),
+            gridY: Math.max(0, Math.min(GRID_SIZE - 1, lowerPos.gridY + pattern.offsetY * (TILE_HEIGHT / cellHeight)))
           };
         }
       }

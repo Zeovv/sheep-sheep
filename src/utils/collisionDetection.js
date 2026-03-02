@@ -29,50 +29,38 @@ export function isOverlap(tileA, tileB) {
 export function calculateBlockedTiles(tiles) {
   if (!tiles || tiles.length === 0) return [];
   
-  // 按层级从高到低排序（layer大的在上层）
   const sortedTiles = [...tiles].sort((a, b) => {
     if (b.layer !== a.layer) {
-      return b.layer - a.layer; // 层级高的在前
+      return b.layer - a.layer;
     }
-    // 同层级时，按y坐标排序（上方的在前）
     if (Math.abs(a.y - b.y) > 1) {
       return a.y - b.y;
     }
-    // y坐标相近时，按x坐标排序
     return a.x - b.x;
   });
   
   const blockedMap = new Map();
   
-  // 初始化所有瓦片为未遮挡
   tiles.forEach(tile => {
     blockedMap.set(tile.id, false);
   });
   
-  // 从上层到下层检查遮挡关系
   for (let i = 0; i < sortedTiles.length; i++) {
     const currentTile = sortedTiles[i];
     
-    // 如果当前瓦片已经被标记为遮挡，跳过
     if (blockedMap.get(currentTile.id)) continue;
     
-    // 检查当前瓦片是否被任何上层瓦片遮挡
-    // j < i 意味着 upperTile 在 sortedTiles 中排在 currentTile 前面
-    // 由于我们按layer从高到低排序，所以j < i意味着upperTile.layer >= currentTile.layer
     for (let j = 0; j < i; j++) {
       const upperTile = sortedTiles[j];
       
-      // 只有上层瓦片（layer更大）才能遮挡下层瓦片
-      if (upperTile.layer > currentTile.layer) {
-        if (isOverlap(upperTile, currentTile)) {
-          blockedMap.set(currentTile.id, true);
-          break; // 一旦被遮挡，就不需要继续检查
-        }
+      if (upperTile.layer < currentTile.layer) continue;
+      if (isOverlap(upperTile, currentTile)) {
+        blockedMap.set(currentTile.id, true);
+        break;
       }
     }
   }
   
-  // 更新瓦片状态
   return tiles.map(tile => ({
     ...tile,
     isBlocked: blockedMap.get(tile.id) || false
