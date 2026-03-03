@@ -13,6 +13,72 @@ import {
   TILE_UNIT_SIZE
 } from './constants';
 
+// 关卡形状模板（基于 Unit 坐标，相对中心点）
+// 可以根据需要继续扩展更多形状
+const LEVEL_TEMPLATES = [
+  {
+    id: 'pyramid_01',
+    name: '金字塔基础型',
+    layers: [
+      // 底层：一排
+      {
+        z: 0,
+        slots: [
+          { x: -6, y: 4 }, { x: -4, y: 4 }, { x: -2, y: 4 },
+          { x: 0,  y: 4 }, { x: 2,  y: 4 }, { x: 4,  y: 4 },
+          { x: 6,  y: 4 }
+        ]
+      },
+      // 第二层
+      {
+        z: 1,
+        slots: [
+          { x: -4, y: 2 }, { x: -2, y: 2 }, { x: 0, y: 2 },
+          { x: 2,  y: 2 }, { x: 4,  y: 2 }
+        ]
+      },
+      // 第三层
+      {
+        z: 2,
+        slots: [
+          { x: -2, y: 0 }, { x: 0, y: 0 }, { x: 2, y: 0 }
+        ]
+      },
+      // 顶层
+      {
+        z: 3,
+        slots: [
+          { x: 0, y: -2 }
+        ]
+      }
+    ]
+  },
+  {
+    id: 'cross_01',
+    name: '十字型',
+    layers: [
+      {
+        z: 0,
+        slots: [
+          // 垂直
+          { x: 0, y: -6 }, { x: 0, y: -4 }, { x: 0, y: -2 },
+          { x: 0, y: 0 },  { x: 0, y: 2 },  { x: 0, y: 4 },
+          // 水平
+          { x: -4, y: 0 }, { x: -2, y: 0 },
+          { x: 2,  y: 0 }, { x: 4,  y: 0 }
+        ]
+      },
+      {
+        z: 1,
+        slots: [
+          { x: 0, y: -2 }, { x: 0, y: 2 },
+          { x: -2, y: 0 }, { x: 2, y: 0 }
+        ]
+      }
+    ]
+  }
+];
+
 /**
  * Unit 坐标系说明：
  * - 整个 GameBoard 被划分为 UNIT_COLS x UNIT_ROWS 个 Unit。
@@ -76,17 +142,31 @@ function generateTileCounts(totalTiles, typeCount) {
   });
 }
 
-// 生成底层（layer 0）的不重叠瓦片位置，尽量铺满整个棋盘
+// 使用形状模板生成底层（以及部分高层）的基础位置
+// 模板坐标是相对中心的 Unit 偏移，这里会转换为全局 unitX/unitY
 function generateBaseLayerPositions() {
   const positions = [];
-  const maxUnitX = UNIT_COLS - TILE_UNIT_SIZE;
-  const maxUnitY = UNIT_ROWS - TILE_UNIT_SIZE;
+  const template = LEVEL_TEMPLATES[0]; // 暂时使用第一个模板，可根据关卡配置切换
 
-  for (let uy = 0; uy <= maxUnitY; uy += TILE_UNIT_SIZE) {
-    for (let ux = 0; ux <= maxUnitX; ux += TILE_UNIT_SIZE) {
-      positions.push({ unitX: ux, unitY: uy, layer: 0 });
-    }
-  }
+  const centerX = Math.floor(UNIT_COLS / 2);
+  const centerY = Math.floor(UNIT_ROWS / 2);
+
+  template.layers.forEach(layerDef => {
+    const layer = layerDef.z;
+    layerDef.slots.forEach((slot) => {
+      const unitX = centerX + slot.x;
+      const unitY = centerY + slot.y;
+
+      const maxUnitX = UNIT_COLS - TILE_UNIT_SIZE;
+      const maxUnitY = UNIT_ROWS - TILE_UNIT_SIZE;
+
+      if (unitX < 0 || unitY < 0 || unitX > maxUnitX || unitY > maxUnitY) {
+        return;
+      }
+
+      positions.push({ unitX, unitY, layer });
+    });
+  });
 
   return positions;
 }
@@ -189,33 +269,58 @@ export function generateTiles(totalTiles = TOTAL_TILES, layers = null) {
     positions = shuffle(positions).slice(0, totalTiles);
   }
 
+  // --- 逆向三消思路的简化实现：按「3 张一组」为同一类型分配 ---
+
+  // 1. 根据 totalTiles 和 TILE_TYPES 构造每种牌的数量，且每种为 3 的倍数
   const tileCounts = generateTileCounts(totalTiles, TILE_TYPES.length);
-  const typePool = [];
+
+  // 2. 构造 groupTypes：每个元素代表一个“三消组”的类型
+  const groupTypes = [];
   TILE_TYPES.forEach((type, idx) => {
-    for (let i = 0; i < tileCounts[idx]; i++) {
-      typePool.push(type);
+    const count = tileCounts[idx];
+    const groups = Math.floor(count / 3);
+    for (let g = 0; g < groups; g++) {
+      groupTypes.push(type);
     }
   });
-  const shuffledTypes = shuffle(typePool);
 
+  // 打乱组的顺序（对应逆向放置的不同时机）
+  const shuffledGroupTypes = shuffle(groupTypes);
+
+  // 3. 为每个三消组分配 3 个物理位置（slots）
+  const shuffledPositions = shuffle(positions);
   const tiles = [];
-  positions.forEach((pos, index) => {
-    const type = shuffledTypes[index % shuffledTypes.length];
-    const pixelPos = unitToPixel(pos.unitX, pos.unitY);
+  let posIndex = 0;
+  let idCounter = 0;
 
-    tiles.push({
-      id: `tile_${index}`,
-      type,
-      layer: pos.layer,
-      unitX: pos.unitX,
-      unitY: pos.unitY,
-      x: pixelPos.x,
-      y: pixelPos.y,
-      width: TILE_WIDTH,
-      height: TILE_HEIGHT,
-      isBlocked: false,
-      isSelected: false,
-      isVisible: true,
+  shuffledGroupTypes.forEach((type) => {
+    // 为当前组取出 3 个位置
+    const groupPositions = [];
+    for (let i = 0; i < 3; i++) {
+      if (posIndex >= shuffledPositions.length) break;
+      groupPositions.push(shuffledPositions[posIndex++]);
+    }
+
+    // 如果位置不足，直接跳过（极端情况）
+    if (groupPositions.length < 3) return;
+
+    // 将 3 个同类型牌放入这 3 个位置
+    groupPositions.forEach((pos) => {
+      const pixelPos = unitToPixel(pos.unitX, pos.unitY);
+      tiles.push({
+        id: `tile_${idCounter++}`,
+        type,
+        layer: pos.layer,
+        unitX: pos.unitX,
+        unitY: pos.unitY,
+        x: pixelPos.x,
+        y: pixelPos.y,
+        width: TILE_WIDTH,
+        height: TILE_HEIGHT,
+        isBlocked: false,
+        isSelected: false,
+        isVisible: true,
+      });
     });
   });
 
