@@ -7,8 +7,17 @@ export const TILE_TYPES = [
 // 游戏核心配置
 export const MAX_SLOTS = 7; // 槽位数量
 export const ELIMINATION_COUNT = 3; // 消除所需数量
-export const GRID_SIZE = 7; // 7×7网格系统
-export const GRID_UNIT = 0.5; // 网格单位（0.5倍细分，实现更灵活的堆叠）
+
+// 虚拟网格（Unit）配置
+// 定义一个基础 Unit 网格，GameBoard 宽度方向 14 个 Unit，高度方向 20 个 Unit
+// 单个瓦片占用 2x2 Unit
+export const UNIT_COLS = 14; // 水平方向 Unit 数量
+export const UNIT_ROWS = 20; // 垂直方向 Unit 数量
+export const TILE_UNIT_SIZE = 2; // 单个瓦片宽/高占用的 Unit 数量
+
+// 兼容旧逻辑的网格常量（不再用于精确布局）
+export const GRID_SIZE = 7;
+export const GRID_UNIT = 1;
 
 // 瓦片配置
 export const TILE_WIDTH = 50; // 瓦片宽度（像素）
